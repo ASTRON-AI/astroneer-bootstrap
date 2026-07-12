@@ -15,6 +15,15 @@
 # login shell; the shell wiring in `astroneer install` targets your login shell.
 set -euo pipefail
 
+# Did the caller point us at a custom (reachable) source? If so, we may still
+# fall back to a plain tarball fetch when gh/git are absent. Otherwise the
+# default repo is private and an unauthenticated download can't work — so we
+# fail fast instead of attempting a doomed fetch (see the no-gh/git branch).
+_an_src_overridden=0
+if [ -n "${ASTRONEER_SLUG:-}" ] || [ -n "${ASTRONEER_TARBALL:-}" ]; then
+  _an_src_overridden=1
+fi
+
 ASTRONEER_SLUG="${ASTRONEER_SLUG:-ASTRON-AI/astroneer}"
 ASTRONEER_REPO="${ASTRONEER_REPO:-https://github.com/${ASTRONEER_SLUG}.git}"
 ASTRONEER_TARBALL="${ASTRONEER_TARBALL:-https://github.com/${ASTRONEER_SLUG}/archive/refs/heads/main.tar.gz}"
@@ -62,11 +71,22 @@ elif command -v git >/dev/null 2>&1; then
   git clone --depth 1 "$ASTRONEER_REPO" "$ASTRONEER_HOME" \
     || die "git clone failed (private repo needs gh auth: run 'gh auth login', or use the gh clone command in the README)"
 else
-  [ -e "$ASTRONEER_HOME" ] && die "$ASTRONEER_HOME exists; move it aside and re-run"
-  say "git/gh not found — fetching tarball into $ASTRONEER_HOME"
+  # No authenticated gh and no git. The default repo is private, so an
+  # unauthenticated tarball fetch always 404s — fail fast with actionable
+  # guidance instead of a doomed download. Only a caller-overridden (reachable)
+  # source still falls through to the tarball path below.
+  if [ "$_an_src_overridden" = 0 ]; then
+    die "can't fetch ${ASTRONEER_SLUG}: no authenticated gh and no git, and the repo is private.
+Fix it one of these ways, then re-run the one-liner:
+  - gh auth login            (install the GitHub CLI first if needed)
+  - or clone it yourself (see README):
+      gh repo clone ${ASTRONEER_SLUG} ${ASTRONEER_HOME} \\
+        && ASTRONEER_SKIP_FETCH=1 bash ${ASTRONEER_HOME}/bootstrap.sh"
+  fi
+  say "git/gh not found — fetching tarball from custom source into $ASTRONEER_HOME"
   tmp="$(mktemp -d)"
   curl -fsSL "$ASTRONEER_TARBALL" -o "${tmp}/astroneer.tar.gz" \
-    || die "tarball fetch failed (private repo needs gh; run the gh clone command in the README)"
+    || die "tarball fetch failed from ${ASTRONEER_TARBALL}"
   tar -xzf "${tmp}/astroneer.tar.gz" -C "$tmp"
   src="$(find "$tmp" -maxdepth 1 -type d -name 'astroneer-*' | head -n1)"
   [ -n "$src" ] || die "unexpected tarball layout"
