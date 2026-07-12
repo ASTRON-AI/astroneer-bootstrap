@@ -34,9 +34,45 @@ say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m[WARN]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[31m[ERR ]\033[0m %s\n' "$*" >&2; exit 1; }
 
+# --- system prerequisites: curl/git/gh must be present AND >= a version floor --
+# astroneer no longer installs gh; curl/git/gh are treated as system tools that
+# you provide via apt. We only CHECK here (no sudo, no apt run) and, if a tool is
+# missing or too old, die with the apt install/upgrade command so you can fix it
+# and re-run. Floors are pinned (a floor = "install/upgrade until at least this");
+# version math is inlined from lib/version.sh because lib/ is fetched later.
+CURL_MIN=8.18.0
+GIT_MIN=2.53.0
+GH_MIN=2.96.0
+CURL_HINT='  sudo apt update && sudo apt install curl'
+GIT_HINT='  sudo add-apt-repository ppa:git-core/ppa && sudo apt update && sudo apt install git'
+GH_HINT='  # gh is not in the default Ubuntu repos. Add the GitHub apt source, then:
+  #   sudo apt update && sudo apt install gh
+  # setup steps: https://github.com/cli/cli/blob/trunk/docs/install_linux.md'
+
+_an_ver() { printf '%s' "${1:-}" | grep -oE '[0-9]+(\.[0-9]+){0,3}' | head -n1; }
+_an_ge()  {
+  [ "$1" = "$2" ] && return 0
+  [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" = "$2" ]
+}
+# _an_require <label> <bin> <floor> <apt-hint>: die unless installed and >= floor.
+_an_require() {
+  local label="$1" bin="$2" floor="$3" hint="$4" ver
+  if ! command -v "$bin" >/dev/null 2>&1; then
+    die "${label} is not installed (astroneer needs >= ${floor}). Install it, then re-run:
+${hint}"
+  fi
+  ver="$(_an_ver "$("$bin" --version 2>&1)")"
+  if [ -z "$ver" ] || ! _an_ge "$ver" "$floor"; then
+    die "${label} ${ver:-(unknown version)} is too old (need >= ${floor}). Upgrade it, then re-run:
+${hint}"
+  fi
+}
+
 # --- 1. preflight (inline; lib/ is not available until after the fetch) --------
 [ "$(uname -s)" = "Linux" ] || die "astroneer supports Linux (WSL/Ubuntu); found $(uname -s)"
-command -v curl >/dev/null 2>&1 || die "curl is required to bootstrap astroneer"
+# curl is always required — it fetches astroneer's runtime deps (gum, jq) too,
+# so this gate runs regardless of how the astroneer tree itself is obtained.
+_an_require "curl" curl "$CURL_MIN" "$CURL_HINT"
 mkdir -p "$BIN_DIR" || die "cannot create $BIN_DIR (check home permissions)"
 
 is_wsl=0
@@ -49,6 +85,16 @@ case " ${ID:-} ${ID_LIKE:-} " in
   *" ubuntu "*|*" debian "*) : ;;
   *) [ "$is_wsl" = 1 ] || warn "not Ubuntu/Debian-family; proceeding best-effort" ;;
 esac
+
+# git + gh are required to clone the private astroneer repo (and later for
+# `astroneer update`). Enforce them on the normal fetch path only: skip when the
+# tree is already present (ASTRONEER_SKIP_FETCH) or a custom reachable source is
+# set (those paths fetch via curl/tarball and don't need git/gh — this mirrors
+# the fetch ladder below and preserves the documented manual-clone recovery).
+if [ "${ASTRONEER_SKIP_FETCH:-0}" != "1" ] && [ "$_an_src_overridden" = 0 ]; then
+  _an_require "git" git "$GIT_MIN" "$GIT_HINT"
+  _an_require "gh" gh "$GH_MIN" "$GH_HINT"
+fi
 
 # --- 2. fetch the astroneer tree ----------------------------------------------
 if [ "${ASTRONEER_SKIP_FETCH:-0}" = "1" ] && [ -x "${ASTRONEER_HOME}/bin/astroneer" ]; then
@@ -117,7 +163,7 @@ cat <<EOF
 astroneer bootstrapped into ${ASTRONEER_HOME}.
 
 Next — provision the astron dev environment (wires PATH + cc/ccpo48x/astro and
-installs Claude Code, Node, gh, then offers optional tools):
+installs Claude Code, Node, then offers optional tools):
 
   ${BIN_DIR}/astroneer install
 
