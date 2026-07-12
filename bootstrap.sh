@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # astroneer bootstrap — fetch astroneer, install runtime deps, put it on PATH.
 #
-# ASTRON-AI/astroneer is a PRIVATE repo, so the plain raw curl|bash one-liner
-# won't resolve without auth. Bootstrap it with an authenticated gh clone:
+# Public one-liner (this file is mirrored to the public astroneer-bootstrap repo):
+#   curl -fsSL https://raw.githubusercontent.com/ASTRON-AI/astroneer-bootstrap/main/bootstrap.sh | bash
+#
+# ASTRON-AI/astroneer itself is a PRIVATE repo, so the raw curl|bash of THIS repo
+# won't resolve without auth. Use the public one-liner above, or clone directly:
 #
 #   gh repo clone ASTRON-AI/astroneer ~/.local/share/astroneer \
 #     && ASTRONEER_SKIP_FETCH=1 bash ~/.local/share/astroneer/bootstrap.sh
