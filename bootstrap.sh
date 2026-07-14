@@ -101,11 +101,17 @@ if [ "${ASTRONEER_SKIP_FETCH:-0}" = "1" ] && [ -x "${ASTRONEER_HOME}/bin/astrone
   say "Using existing astroneer tree at $ASTRONEER_HOME (skip-fetch)"
 elif [ -d "${ASTRONEER_HOME}/.git" ]; then
   say "Updating astroneer in $ASTRONEER_HOME"
+  # Update the same way we clone — via gh (native auth), not a hand-built git
+  # extraheader token: GitHub's git-over-HTTPS transport rejects the bearer-token
+  # scheme ("invalid credentials"). Fast-forward first; hard-reset (--force) on a
+  # non-fast-forward, since the tree is astroneer-managed and matching origin/main
+  # is the intended recovery. Plain pull only when gh is unauthenticated.
   if command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1; then
-    git -C "$ASTRONEER_HOME" -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $(gh auth token)" pull --ff-only \
-      || warn "git pull failed; using existing tree"
+    ( cd "$ASTRONEER_HOME" && { gh repo sync -b main || gh repo sync -b main --force; } ) \
+      || warn "gh repo sync failed; using existing tree"
   else
-    git -C "$ASTRONEER_HOME" pull --ff-only || warn "git pull failed; using existing tree"
+    GIT_TERMINAL_PROMPT=0 git -C "$ASTRONEER_HOME" pull --ff-only \
+      || warn "git pull failed — run 'gh auth login', then re-run; using existing tree"
   fi
 elif [ -e "$ASTRONEER_HOME" ]; then
   die "$ASTRONEER_HOME exists but is not an astroneer git checkout; move it aside and re-run"
