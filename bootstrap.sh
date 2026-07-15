@@ -26,7 +26,12 @@ fi
 
 ASTRONEER_SLUG="${ASTRONEER_SLUG:-ASTRON-AI/astroneer}"
 ASTRONEER_REPO="${ASTRONEER_REPO:-https://github.com/${ASTRONEER_SLUG}.git}"
-ASTRONEER_TARBALL="${ASTRONEER_TARBALL:-https://github.com/${ASTRONEER_SLUG}/archive/refs/heads/main.tar.gz}"
+# Optional branch/tag to clone instead of the repo default (empty = default branch).
+# Lets a user pin a release (ASTRONEER_REF=v0.2.0) or try a branch before it merges;
+# the E2E --via-bootstrap harness uses it to bootstrap the branch under test. It is
+# a git ref for `clone --branch`, so a branch or tag name (not an arbitrary commit).
+ASTRONEER_REF="${ASTRONEER_REF:-}"
+ASTRONEER_TARBALL="${ASTRONEER_TARBALL:-https://github.com/${ASTRONEER_SLUG}/archive/${ASTRONEER_REF:-refs/heads/main}.tar.gz}"
 ASTRONEER_HOME="${ASTRONEER_HOME:-$HOME/.local/share/astroneer}"
 BIN_DIR="${HOME}/.local/bin"
 
@@ -123,12 +128,21 @@ elif [ -d "${ASTRONEER_HOME}/.git" ]; then
 elif [ -e "$ASTRONEER_HOME" ]; then
   die "$ASTRONEER_HOME exists but is not an astroneer git checkout; move it aside and re-run"
 elif command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1; then
-  say "Cloning astroneer (private) via gh into $ASTRONEER_HOME"
-  gh repo clone "$ASTRONEER_SLUG" "$ASTRONEER_HOME" -- --depth 1
+  say "Cloning astroneer (private) via gh into $ASTRONEER_HOME${ASTRONEER_REF:+ (ref ${ASTRONEER_REF})}"
+  if [ -n "$ASTRONEER_REF" ]; then
+    gh repo clone "$ASTRONEER_SLUG" "$ASTRONEER_HOME" -- --depth 1 --branch "$ASTRONEER_REF"
+  else
+    gh repo clone "$ASTRONEER_SLUG" "$ASTRONEER_HOME" -- --depth 1
+  fi
 elif command -v git >/dev/null 2>&1; then
-  say "Cloning astroneer into $ASTRONEER_HOME"
-  git clone --depth 1 "$ASTRONEER_REPO" "$ASTRONEER_HOME" \
-    || die "git clone failed (private repo needs gh auth: run 'gh auth login', or use the gh clone command in the README)"
+  say "Cloning astroneer into $ASTRONEER_HOME${ASTRONEER_REF:+ (ref ${ASTRONEER_REF})}"
+  if [ -n "$ASTRONEER_REF" ]; then
+    git clone --depth 1 --branch "$ASTRONEER_REF" "$ASTRONEER_REPO" "$ASTRONEER_HOME" \
+      || die "git clone failed (private repo needs gh auth: run 'gh auth login', or use the gh clone command in the README)"
+  else
+    git clone --depth 1 "$ASTRONEER_REPO" "$ASTRONEER_HOME" \
+      || die "git clone failed (private repo needs gh auth: run 'gh auth login', or use the gh clone command in the README)"
+  fi
 else
   # No authenticated gh and no git. The default repo is private, so an
   # unauthenticated tarball fetch always 404s — fail fast with actionable
