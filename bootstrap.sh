@@ -44,6 +44,7 @@ CURL_MIN=8.18.0
 GIT_MIN=2.53.0
 GH_MIN=2.96.0
 CURL_HINT='  sudo apt update && sudo apt install curl'
+UNZIP_HINT='  sudo apt update && sudo apt install unzip'
 GIT_HINT='  sudo add-apt-repository ppa:git-core/ppa && sudo apt update && sudo apt install git'
 GH_HINT='  # gh is not in the default Ubuntu repos. Add the GitHub apt source, then:
   #   sudo apt update && sudo apt install gh
@@ -73,6 +74,12 @@ ${hint}"
 # curl is always required — it fetches astroneer's runtime deps (gum, jq) too,
 # so this gate runs regardless of how the astroneer tree itself is obtained.
 _an_require "curl" curl "$CURL_MIN" "$CURL_HINT"
+# unzip is required by the mandatory Node install: `astroneer install` provisions
+# Node via fnm, whose installer ships a .zip and refuses without unzip — and a
+# fresh Ubuntu has none. Presence-only (no version floor); fail fast here with the
+# apt command instead of a cryptic "Not installing fnm" error at install time.
+command -v unzip >/dev/null 2>&1 || die "unzip is not installed (astroneer's Node/fnm install needs it). Install it, then re-run:
+${UNZIP_HINT}"
 mkdir -p "$BIN_DIR" || die "cannot create $BIN_DIR (check home permissions)"
 
 is_wsl=0
